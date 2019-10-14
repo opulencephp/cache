@@ -10,20 +10,38 @@
 
 declare(strict_types=1);
 
-namespace Opulence\Cache\TestsTemp;
+namespace Opulence\Cache\tests;
 
-use Opulence\Cache\ArrayBridge;
+use Opulence\Cache\FileBridge;
 
 /**
- * Tests that array bridge
+ * Tests the file bridge
  */
-class ArrayBridgeTest extends \PHPUnit\Framework\TestCase
+class FileBridgeTest extends \PHPUnit\Framework\TestCase
 {
-    private ArrayBridge $bridge;
+    private FileBridge $bridge;
+
+    public static function setUpBeforeClass(): void
+    {
+        if (!is_dir(__DIR__ . '/tmp')) {
+            mkdir(__DIR__ . '/tmp');
+        }
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        $files = glob(__DIR__ . '/tmp/*');
+
+        foreach ($files as $file) {
+            is_dir($file) ? rmdir($file) : unlink($file);
+        }
+
+        rmdir(__DIR__ . '/tmp');
+    }
 
     protected function setUp(): void
     {
-        $this->bridge = new ArrayBridge();
+        $this->bridge = new FileBridge(__DIR__ . '/tmp');
     }
 
     public function testCheckingIfKeyExists(): void
@@ -51,6 +69,13 @@ class ArrayBridgeTest extends \PHPUnit\Framework\TestCase
         $this->bridge->set('foo', 'bar', 60);
         $this->bridge->delete('foo');
         $this->assertFalse($this->bridge->has('foo'));
+    }
+
+    public function testExpiredKeyIsNotRead(): void
+    {
+        $this->bridge->set('foo', 'bar', -1);
+        $this->assertFalse($this->bridge->has('foo'));
+        $this->assertNull($this->bridge->get('foo'));
     }
 
     public function testFlushing(): void
@@ -85,14 +110,11 @@ class ArrayBridgeTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(7, $this->bridge->increment('foo', 5));
     }
 
-    /**
-     * Tests that setting a value with a lifetime of 0 or lower is not retained in cache
-     */
-    public function testSettingValueWithNegativeLifetime(): void
+    public function testTrailingSlashGetsTrimmed(): void
     {
-        $this->bridge->set('foo', 'bar', 0);
-        $this->assertFalse($this->bridge->has('foo'));
-        $this->bridge->set('foo', 'bar', -1);
-        $this->assertFalse($this->bridge->has('foo'));
+        $bridge = new FileBridge(__DIR__ . '/tmp/');
+        $bridge->set('foo', 'bar', 60);
+        $this->assertFileExists(__DIR__ . '/tmp/' . md5('foo'));
+        $this->assertEquals('bar', $bridge->get('foo'));
     }
 }

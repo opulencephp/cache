@@ -10,33 +10,35 @@
 
 declare(strict_types=1);
 
-namespace Opulence\Cache\TestsTemp;
+namespace Opulence\Cache\tests;
 
-use Opulence\Cache\RedisBridge;
+use Memcached;
+use Opulence\Cache\MemcachedBridge;
 use PHPUnit\Framework\MockObject\MockObject;
-use Redis;
 
 /**
- * Tests the Redis bridge
+ * Tests the Memcached bridge
  */
-class RedisBridgeTest extends \PHPUnit\Framework\TestCase
+class MemcachedBridgeTest extends \PHPUnit\Framework\TestCase
 {
-    private RedisBridge $bridge;
-    /** @var Redis|MockObject The Redis driver */
-    private Redis $redis;
+    private MemcachedBridge $bridge;
+    /** @var Memcached|MockObject The Memcached driver */
+    private Memcached $memcached;
 
     protected function setUp(): void
     {
-        $this->redis = $this->createMock(Redis::class);
-        $this->bridge = new RedisBridge($this->redis, 'dave:');
+        $this->memcached = $this->getMockBuilder(Memcached::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $this->bridge = new MemcachedBridge($this->memcached, 'dave:');
     }
 
     public function testCheckingIfKeyExists(): void
     {
-        $this->redis->expects($this->at(0))
+        $this->memcached->expects($this->at(0))
             ->method('get')
             ->willReturn(false);
-        $this->redis->expects($this->at(1))
+        $this->memcached->expects($this->at(1))
             ->method('get')
             ->willReturn('bar');
         $this->assertFalse($this->bridge->has('foo'));
@@ -45,12 +47,12 @@ class RedisBridgeTest extends \PHPUnit\Framework\TestCase
 
     public function testDecrementingReturnsCorrectValues(): void
     {
-        $this->redis->expects($this->at(0))
-            ->method('decrBy')
+        $this->memcached->expects($this->at(0))
+            ->method('decrement')
             ->with('dave:foo', 1)
             ->willReturn(10);
-        $this->redis->expects($this->at(1))
-            ->method('decrBy')
+        $this->memcached->expects($this->at(1))
+            ->method('decrement')
             ->with('dave:foo', 5)
             ->willReturn(5);
         // Test using default value
@@ -61,40 +63,54 @@ class RedisBridgeTest extends \PHPUnit\Framework\TestCase
 
     public function testDeletingKey(): void
     {
-        $this->redis->expects($this->once())
-            ->method('del')
+        $this->memcached->expects($this->once())
+            ->method('delete')
             ->with('dave:foo');
         $this->bridge->delete('foo');
     }
 
     public function testDriverIsCorrectInstance(): void
     {
-        $this->assertSame($this->redis, $this->bridge->getRedis());
+        $this->assertSame($this->memcached, $this->bridge->getMemcached());
+    }
+
+    public function testErrorDuringGetWillReturnNull(): void
+    {
+        $this->memcached->expects($this->once())
+            ->method('get')
+            ->willReturn('bar');
+        $this->memcached->expects($this->once())
+            ->method('getResultCode')
+            ->willReturn(1);
+        $this->assertNull($this->bridge->get('foo'));
     }
 
     public function testFlushing(): void
     {
-        $this->redis->expects($this->once())
-            ->method('flushAll');
+        $this->memcached->expects($this->once())
+            ->method('flush');
         $this->bridge->flush();
     }
 
     public function testGetWorks(): void
     {
-        $this->redis->expects($this->once())
+        $this->memcached->expects($this->once())
             ->method('get')
             ->willReturn('bar');
+        $this->memcached->expects($this->once())
+            ->method('getResultCode')
+            ->willReturn(0);
         $this->assertEquals('bar', $this->bridge->get('foo'));
     }
 
     public function testIncrementingReturnsCorrectValues(): void
     {
-        $this->redis->expects($this->at(0))
-            ->method('incrBy')
+        $this->memcached->expects($this->at(0))
+            ->method('increment')
             ->with('dave:foo', 1)
             ->willReturn(2);
-        $this->redis->expects($this->at(1))
-            ->method('incrBy')
+        $this->memcached->expects($this->at(1))
+            ->method('increment')
             ->with('dave:foo', 5)
             ->willReturn(7);
         // Test using default value
@@ -105,7 +121,7 @@ class RedisBridgeTest extends \PHPUnit\Framework\TestCase
 
     public function testNullIsReturnedOnMiss(): void
     {
-        $this->redis->expects($this->once())
+        $this->memcached->expects($this->once())
             ->method('get')
             ->willReturn(false);
         $this->assertNull($this->bridge->get('foo'));
@@ -113,19 +129,20 @@ class RedisBridgeTest extends \PHPUnit\Framework\TestCase
 
     public function testSettingValue(): void
     {
-        $this->redis->expects($this->once())
-            ->method('setEx')
-            ->with('dave:foo', 60, 'bar');
+        $this->memcached->expects($this->once())
+            ->method('set')
+            ->with('dave:foo', 'bar', 60);
         $this->bridge->set('foo', 'bar', 60);
     }
 
-    public function testUsingBaseRedisInstance(): void
+    public function testUsingBaseMemcachedInstance(): void
     {
-        /** @var Redis|MockObject $redis */
-        $redis = $this->getMockBuilder(Redis::class)
+        /** @var Memcached|MockObject $memcached */
+        $memcached = $this->getMockBuilder(Memcached::class)
             ->disableOriginalConstructor()
+            ->setMockClassName('Foo')
             ->getMock();
-        $bridge = new RedisBridge($redis);
-        $this->assertSame($redis, $bridge->getRedis());
+        $bridge = new MemcachedBridge($memcached);
+        $this->assertSame($memcached, $bridge->getMemcached());
     }
 }
